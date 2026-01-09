@@ -338,39 +338,38 @@ impl Source for Environment {
             // also create alternate keys with underscores to support struct field names with underscores.
             // For example, if key is "foo.bar.baz", also add "foo_bar.baz" to allow matching
             // a struct with field name `foo_bar: FooBar { baz: String }`
-            // Additionally, create "foo.bar_baz" to match struct Foo { bar_baz: String }
-            // This creates O(n^2) alternates for n dot-separated parts, which is acceptable for
-            // typical environment variable nesting depths (usually 2-4 levels).
+            // This creates O(2^n) alternates by trying all possible consecutive merges.
             if !separator.is_empty() && key.contains('.') {
                 let parts: Vec<&str> = key.split('.').collect();
                 // Limit to reasonable nesting depth to avoid excessive alternates
-                // Most environment variables have 2-4 levels, so 10 is a safe upper bound
-                if parts.len() <= 10 {
-                    // Try different groupings:
-                    // For "foo.bar.baz", create:
-                    // - "foo_bar.baz" (merging prefix parts)
-                    // - "foo.bar_baz" (merging suffix parts)
-                    for split_point in 1..parts.len() {
-                        // Merge prefix parts with underscores, keep suffix with dots
-                        let prefix = parts[..split_point].join("_");
-                        let suffix = parts[split_point..].join(".");
+                // For depths up to 8, we generate manageable number of alternates (up to 128)
+                if parts.len() <= 8 && parts.len() > 1 {
+                    // Strategy: Try merging consecutive parts with underscores
+                    // For "a.b.c.d", try: "a_b.c.d", "a.b_c.d", "a.b.c_d", "a_b_c.d", "a_b.c_d", "a.b_c_d", "a_b_c_d"
+                    // We use a bitmask approach where each bit represents whether to merge with the next part
+                    let n = parts.len() - 1; // number of positions between parts
+                    let max_combinations = if n <= 7 { 1 << n } else { 128 }; // limit to 128 combinations
+                    
+                    for mask in 1..max_combinations {
+                        let mut result_parts = Vec::new();
+                        let mut current_part = String::from(parts[0]);
                         
-                        if !suffix.is_empty() {
-                            let alt_key = format!("{prefix}.{suffix}");
-                            if !m.contains_key(&alt_key) {
-                                m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                        for i in 0..n {
+                            if mask & (1 << i) != 0 {
+                                // Merge with underscore
+                                current_part.push('_');
+                                current_part.push_str(parts[i + 1]);
+                            } else {
+                                // Split with dot
+                                result_parts.push(current_part);
+                                current_part = String::from(parts[i + 1]);
                             }
                         }
+                        result_parts.push(current_part);
                         
-                        // Merge suffix parts with underscores, keep prefix with dots
-                        let prefix_dots = parts[..split_point].join(".");
-                        let suffix_underscores = parts[split_point..].join("_");
-                        
-                        if !suffix_underscores.is_empty() {
-                            let alt_key = format!("{prefix_dots}.{suffix_underscores}");
-                            if !m.contains_key(&alt_key) {
-                                m.insert(alt_key, Value::new(Some(&uri), value.clone()));
-                            }
+                        let alt_key = result_parts.join(".");
+                        if !m.contains_key(&alt_key) && alt_key != key {
+                            m.insert(alt_key, Value::new(Some(&uri), value.clone()));
                         }
                     }
                 }

@@ -855,3 +855,152 @@ fn test_nested_struct_with_underscore_in_field_name() {
     });
 }
 
+#[test]
+fn test_deeply_nested_struct_with_underscores() {
+    // Test a realistic deeply nested configuration structure (6 levels)
+    // This simulates a real-world app config like:
+    // app.database.connection_pool.settings.max_connections.value
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct MaxConnections {
+        value: i32,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct PoolSettings {
+        max_connections: MaxConnections,
+        min_idle: i32,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct ConnectionPool {
+        settings: PoolSettings,
+        timeout_ms: i32,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct DatabaseConfig {
+        connection_pool: ConnectionPool,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct AppConfig {
+        database: DatabaseConfig,
+    }
+    
+    temp_env::with_vars(
+        vec![
+            ("APP_DATABASE_CONNECTION_POOL_SETTINGS_MAX_CONNECTIONS_VALUE", Some("100")),
+            ("APP_DATABASE_CONNECTION_POOL_SETTINGS_MIN_IDLE", Some("10")),
+            ("APP_DATABASE_CONNECTION_POOL_TIMEOUT_MS", Some("5000")),
+        ],
+        || {
+            let environment = Environment::with_prefix("APP")
+                .separator("_")
+                .try_parsing(true);
+            
+            let config = Config::builder()
+                .add_source(environment)
+                .build()
+                .unwrap();
+            
+            let app_config: AppConfig = config.try_deserialize().unwrap();
+            
+            assert_eq!(app_config.database.connection_pool.settings.max_connections.value, 100);
+            assert_eq!(app_config.database.connection_pool.settings.min_idle, 10);
+            assert_eq!(app_config.database.connection_pool.timeout_ms, 5000);
+        }
+    );
+}
+
+#[test]
+fn test_mixed_underscore_positions_complex() {
+    // Test various combinations of underscores in field names at different levels
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct InnerMost {
+        final_value: String,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct MiddleLayer {
+        inner_most: InnerMost,
+        other_field: String,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct TopLevel {
+        middle_layer: MiddleLayer,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct ComplexConfig {
+        top_level: TopLevel,
+        simple_field: String,
+    }
+    
+    temp_env::with_vars(
+        vec![
+            ("TOP_LEVEL_MIDDLE_LAYER_INNER_MOST_FINAL_VALUE", Some("nested_value")),
+            ("TOP_LEVEL_MIDDLE_LAYER_OTHER_FIELD", Some("other_value")),
+            ("SIMPLE_FIELD", Some("simple_value")),
+        ],
+        || {
+            let environment = Environment::default()
+                .separator("_")
+                .try_parsing(true);
+            
+            let config = Config::builder()
+                .add_source(environment)
+                .build()
+                .unwrap();
+            
+            let complex_config: ComplexConfig = config.try_deserialize().unwrap();
+            
+            assert_eq!(complex_config.top_level.middle_layer.inner_most.final_value, "nested_value");
+            assert_eq!(complex_config.top_level.middle_layer.other_field, "other_value");
+            assert_eq!(complex_config.simple_field, "simple_value");
+        }
+    );
+}
+
+#[test]
+fn test_vector_deserialization_with_list_separator() {
+    // Test that vector deserialization works with list_separator
+    // (Note: this uses list_separator, not indexed keys like FOO_0_BAR)
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct ServerConfig {
+        allowed_hosts: Vec<String>,
+        ports: Vec<i32>,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct AppConfig {
+        server: ServerConfig,
+    }
+    
+    temp_env::with_vars(
+        vec![
+            ("APP_SERVER_ALLOWED_HOSTS", Some("localhost,example.com,api.example.com")),
+            ("APP_SERVER_PORTS", Some("8080,8081,8082")),
+        ],
+        || {
+            let environment = Environment::with_prefix("APP")
+                .separator("_")
+                .try_parsing(true)
+                .list_separator(",");
+            
+            let config = Config::builder()
+                .add_source(environment)
+                .build()
+                .unwrap();
+            
+            let app_config: AppConfig = config.try_deserialize().unwrap();
+            
+            assert_eq!(app_config.server.allowed_hosts, vec!["localhost", "example.com", "api.example.com"]);
+            assert_eq!(app_config.server.ports, vec![8080, 8081, 8082]);
+        }
+    );
+}
+
