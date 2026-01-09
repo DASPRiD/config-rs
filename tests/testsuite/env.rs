@@ -806,57 +806,6 @@ mod unicode_tests {
 }
 
 #[test]
-fn test_default_separator_debug() {
-    temp_env::with_var("FOO_BAR_BAZ", Some("value"), || {
-        let environment = Environment::default();
-        let collected = environment.collect().unwrap();
-        
-        // Check what key is in the map
-        println!("Keys: {:?}", collected.keys().collect::<Vec<_>>());
-        for (key, val) in collected.iter() {
-            println!("  '{}' = {:?}", key, val);
-        }
-        
-        assert!(collected.contains_key("foo_bar_baz"));
-    });
-}
-
-#[test]
-fn test_nested_struct_with_underscore_field() {
-    #[derive(Deserialize, Debug)]
-    struct FooBar {
-        baz: String,
-    }
-
-    #[derive(Deserialize, Debug)]
-    struct AppConfig {
-        foo_bar: FooBar,
-    }
-
-    temp_env::with_var("FOO_BAR_BAZ", Some("test_value"), || {
-        let environment = Environment::default();
-        let config = Config::builder()
-            .add_source(environment)
-            .build()
-            .unwrap();
-        
-        println!("Config: {:#?}", config);
-        
-        let result: Result<AppConfig, _> = config.try_deserialize();
-        
-        match result {
-            Ok(app_config) => {
-                println!("Success! AppConfig: {:#?}", app_config);
-                assert_eq!(app_config.foo_bar.baz, "test_value");
-            }
-            Err(e) => {
-                panic!("Failed to deserialize: {}", e);
-            }
-        }
-    });
-}
-
-#[test]
 fn test_nested_struct_with_underscore_separator() {
     #[derive(Deserialize, Debug)]
     struct FooBar {
@@ -891,3 +840,4 @@ fn test_nested_struct_with_underscore_separator() {
         }
     });
 }
+

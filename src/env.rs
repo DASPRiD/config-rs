@@ -332,7 +332,30 @@ impl Source for Environment {
                 ValueKind::String(value)
             };
 
-            m.insert(key, Value::new(Some(&uri), value));
+            m.insert(key.clone(), Value::new(Some(&uri), value.clone()));
+            
+            // If the key contains dots (from separator replacement) and separator was used,
+            // also create alternate keys with underscores to support struct field names with underscores.
+            // For example, if key is "foo.bar.baz", also add "foo_bar.baz" to allow matching
+            // a struct with field name `foo_bar: FooBar { baz: String }`
+            if !separator.is_empty() && key.contains('.') {
+                let parts: Vec<&str> = key.split('.').collect();
+                // Try different groupings: for "foo.bar.baz", create "foo_bar.baz"
+                for split_point in 1..parts.len() {
+                    let prefix = parts[..split_point].join("_");
+                    let suffix = parts[split_point..].join(".");
+                    let alt_key = if suffix.is_empty() {
+                        prefix
+                    } else {
+                        format!("{}.{}", prefix, suffix)
+                    };
+                    
+                    // Only insert if it doesn't already exist (don't override explicit keys)
+                    if !m.contains_key(&alt_key) {
+                        m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                    }
+                }
+            }
 
             Ok(())
         };
