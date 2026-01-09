@@ -804,3 +804,105 @@ mod unicode_tests {
         );
     }
 }
+
+#[test]
+fn test_nested_struct_with_underscore_separator() {
+    #[derive(Deserialize, Debug)]
+    struct FooBar {
+        baz: String,
+    }
+
+    #[derive(Deserialize, Debug)]
+    struct AppConfig {
+        foo_bar: FooBar,
+    }
+
+    temp_env::with_var("FOO_BAR_BAZ", Some("test_value"), || {
+        let environment = Environment::default().separator("_");
+        let config = Config::builder()
+            .add_source(environment)
+            .build()
+            .unwrap();
+        
+        let app_config: AppConfig = config.try_deserialize().unwrap();
+        assert_eq!(app_config.foo_bar.baz, "test_value");
+    });
+}
+
+#[test]
+fn test_nested_struct_with_underscore_in_field_name() {
+    #[derive(Deserialize, Debug)]
+    struct Foo {
+        bar_baz: String,
+    }
+
+    #[derive(Deserialize, Debug)]
+    struct AppConfig {
+        foo: Foo,
+    }
+
+    // FOO_BAR_BAZ with separator "_" becomes "foo.bar.baz"
+    // Should also create "foo.bar_baz" alternate to match the field name bar_baz
+    temp_env::with_var("FOO_BAR_BAZ", Some("test_value"), || {
+        let environment = Environment::default().separator("_");
+        let config = Config::builder()
+            .add_source(environment)
+            .build()
+            .unwrap();
+        
+        let app_config: AppConfig = config.try_deserialize().unwrap();
+        assert_eq!(app_config.foo.bar_baz, "test_value");
+    });
+}
+
+#[test]
+fn test_mixed_underscore_positions_complex() {
+    // Test various combinations of underscores in field names at different levels
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct InnerMost {
+        final_value: String,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct MiddleLayer {
+        inner_most: InnerMost,
+        other_field: String,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct TopLevel {
+        middle_layer: MiddleLayer,
+    }
+    
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct ComplexConfig {
+        top_level: TopLevel,
+        simple_field: String,
+    }
+    
+    temp_env::with_vars(
+        vec![
+            ("TOP_LEVEL_MIDDLE_LAYER_INNER_MOST_FINAL_VALUE", Some("nested_value")),
+            ("TOP_LEVEL_MIDDLE_LAYER_OTHER_FIELD", Some("other_value")),
+            ("SIMPLE_FIELD", Some("simple_value")),
+        ],
+        || {
+            let environment = Environment::default()
+                .separator("_")
+                .try_parsing(true);
+            
+            let config = Config::builder()
+                .add_source(environment)
+                .build()
+                .unwrap();
+            
+            let complex_config: ComplexConfig = config.try_deserialize().unwrap();
+            
+            assert_eq!(complex_config.top_level.middle_layer.inner_most.final_value, "nested_value");
+            assert_eq!(complex_config.top_level.middle_layer.other_field, "other_value");
+            assert_eq!(complex_config.simple_field, "simple_value");
+        }
+    );
+}
+
