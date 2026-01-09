@@ -275,7 +275,7 @@ impl MapAccess {
                     }
                 }
                 _ => {
-                    if value.origin().is_some_and(|o| o.contains("environment")) {
+                    if value.origin().is_some_and(|o| o == "the environment") {
                         return true;
                     }
                 }
