@@ -829,3 +829,29 @@ fn test_nested_struct_with_underscore_separator() {
     });
 }
 
+#[test]
+fn test_nested_struct_with_underscore_in_field_name() {
+    #[derive(Deserialize, Debug)]
+    struct Foo {
+        bar_baz: String,
+    }
+
+    #[derive(Deserialize, Debug)]
+    struct AppConfig {
+        foo: Foo,
+    }
+
+    // FOO_BAR_BAZ with separator "_" becomes "foo.bar.baz"
+    // Should also create "foo.bar_baz" alternate to match the field name bar_baz
+    temp_env::with_var("FOO_BAR_BAZ", Some("test_value"), || {
+        let environment = Environment::default().separator("_");
+        let config = Config::builder()
+            .add_source(environment)
+            .build()
+            .unwrap();
+        
+        let app_config: AppConfig = config.try_deserialize().unwrap();
+        assert_eq!(app_config.foo.bar_baz, "test_value");
+    });
+}
+

@@ -338,26 +338,39 @@ impl Source for Environment {
             // also create alternate keys with underscores to support struct field names with underscores.
             // For example, if key is "foo.bar.baz", also add "foo_bar.baz" to allow matching
             // a struct with field name `foo_bar: FooBar { baz: String }`
-            // This creates O(n) alternates for n dot-separated parts, which is acceptable for
+            // Additionally, create "foo.bar_baz" to match struct Foo { bar_baz: String }
+            // This creates O(n^2) alternates for n dot-separated parts, which is acceptable for
             // typical environment variable nesting depths (usually 2-4 levels).
             if !separator.is_empty() && key.contains('.') {
                 let parts: Vec<&str> = key.split('.').collect();
                 // Limit to reasonable nesting depth to avoid excessive alternates
                 // Most environment variables have 2-4 levels, so 10 is a safe upper bound
                 if parts.len() <= 10 {
-                    // Try different groupings: for "foo.bar.baz", create "foo_bar.baz" and "foo_bar_baz"
+                    // Try different groupings:
+                    // For "foo.bar.baz", create:
+                    // - "foo_bar.baz" (merging prefix parts)
+                    // - "foo.bar_baz" (merging suffix parts)
                     for split_point in 1..parts.len() {
+                        // Merge prefix parts with underscores, keep suffix with dots
                         let prefix = parts[..split_point].join("_");
                         let suffix = parts[split_point..].join(".");
-                        let alt_key = if suffix.is_empty() {
-                            prefix
-                        } else {
-                            format!("{prefix}.{suffix}")
-                        };
                         
-                        // Only insert if it doesn't already exist (don't override explicit keys)
-                        if !m.contains_key(&alt_key) {
-                            m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                        if !suffix.is_empty() {
+                            let alt_key = format!("{prefix}.{suffix}");
+                            if !m.contains_key(&alt_key) {
+                                m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                            }
+                        }
+                        
+                        // Merge suffix parts with underscores, keep prefix with dots
+                        let prefix_dots = parts[..split_point].join(".");
+                        let suffix_underscores = parts[split_point..].join("_");
+                        
+                        if !suffix_underscores.is_empty() {
+                            let alt_key = format!("{prefix_dots}.{suffix_underscores}");
+                            if !m.contains_key(&alt_key) {
+                                m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                            }
                         }
                     }
                 }
