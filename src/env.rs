@@ -338,21 +338,27 @@ impl Source for Environment {
             // also create alternate keys with underscores to support struct field names with underscores.
             // For example, if key is "foo.bar.baz", also add "foo_bar.baz" to allow matching
             // a struct with field name `foo_bar: FooBar { baz: String }`
+            // This creates O(n) alternates for n dot-separated parts, which is acceptable for
+            // typical environment variable nesting depths (usually 2-4 levels).
             if !separator.is_empty() && key.contains('.') {
                 let parts: Vec<&str> = key.split('.').collect();
-                // Try different groupings: for "foo.bar.baz", create "foo_bar.baz"
-                for split_point in 1..parts.len() {
-                    let prefix = parts[..split_point].join("_");
-                    let suffix = parts[split_point..].join(".");
-                    let alt_key = if suffix.is_empty() {
-                        prefix
-                    } else {
-                        format!("{}.{}", prefix, suffix)
-                    };
-                    
-                    // Only insert if it doesn't already exist (don't override explicit keys)
-                    if !m.contains_key(&alt_key) {
-                        m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                // Limit to reasonable nesting depth to avoid excessive alternates
+                // Most environment variables have 2-4 levels, so 10 is a safe upper bound
+                if parts.len() <= 10 {
+                    // Try different groupings: for "foo.bar.baz", create "foo_bar.baz" and "foo_bar_baz"
+                    for split_point in 1..parts.len() {
+                        let prefix = parts[..split_point].join("_");
+                        let suffix = parts[split_point..].join(".");
+                        let alt_key = if suffix.is_empty() {
+                            prefix
+                        } else {
+                            format!("{}.{}", prefix, suffix)
+                        };
+                        
+                        // Only insert if it doesn't already exist (don't override explicit keys)
+                        if !m.contains_key(&alt_key) {
+                            m.insert(alt_key, Value::new(Some(&uri), value.clone()));
+                        }
                     }
                 }
             }

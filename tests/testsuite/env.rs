@@ -824,20 +824,8 @@ fn test_nested_struct_with_underscore_separator() {
             .build()
             .unwrap();
         
-        println!("Config with separator('_'): {:#?}", config);
-        
-        let result: Result<AppConfig, _> = config.try_deserialize();
-        
-        match result {
-            Ok(app_config) => {
-                println!("Success! AppConfig: {:#?}", app_config);
-                assert_eq!(app_config.foo_bar.baz, "test_value");
-            }
-            Err(e) => {
-                println!("Error: {}", e);
-                panic!("Failed to deserialize with separator: {}", e);
-            }
-        }
+        let app_config: AppConfig = config.try_deserialize().unwrap();
+        assert_eq!(app_config.foo_bar.baz, "test_value");
     });
 }
 
