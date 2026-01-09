@@ -230,8 +230,75 @@ struct MapAccess {
 
 impl MapAccess {
     fn new(table: Map<String, Value>) -> Self {
+        // For environment variables, add alternate keys with underscores
+        let table = Self::add_env_alternates(table);
+        
         Self {
             elements: table.into_iter().collect(),
+        }
+    }
+    
+    /// Add alternate keys for environment variables to support underscore field names.
+    /// For a nested structure `foo` -> `bar` -> `baz`, add `foo_bar` -> { `baz`: value }
+    fn add_env_alternates(mut table: Map<String, Value>) -> Map<String, Value> {
+        let mut additions = Vec::new();
+        
+        // For each entry, if it's a table, check if it contains environment values
+        // and create alternates
+        for (key, value) in &table {
+            if let ValueKind::Table(ref nested_table) = value.kind {
+                // Check if this subtree contains any environment values
+                if Self::contains_env_values(nested_table) {
+                    // Create alternates by joining this key with nested keys
+                    Self::collect_alternates(key, nested_table, &mut additions);
+                }
+            }
+        }
+        
+        // Add all alternates
+        for (alt_key, alt_value) in additions {
+            if !table.contains_key(&alt_key) {
+                table.insert(alt_key, alt_value);
+            }
+        }
+        
+        table
+    }
+    
+    /// Check if a table or its descendants contain any values from the environment
+    fn contains_env_values(table: &Map<String, Value>) -> bool {
+        for value in table.values() {
+            match &value.kind {
+                ValueKind::Table(nested) => {
+                    if Self::contains_env_values(nested) {
+                        return true;
+                    }
+                }
+                _ => {
+                    if value.origin().is_some_and(|o| o.contains("environment")) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+    
+    /// Recursively collect alternate keys by joining parent and child keys with underscores
+    fn collect_alternates(
+        prefix: &str,
+        table: &Map<String, Value>,
+        additions: &mut Vec<(String, Value)>,
+    ) {
+        for (key, value) in table {
+            // Create alternate with underscore: prefix_key -> value
+            let alt_key = format!("{prefix}_{key}");
+            additions.push((alt_key.clone(), value.clone()));
+            
+            // If value is also a table, recurse to create deeper alternates
+            if let ValueKind::Table(ref nested_table) = value.kind {
+                Self::collect_alternates(&alt_key, nested_table, additions);
+            }
         }
     }
 }
