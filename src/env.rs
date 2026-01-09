@@ -352,7 +352,7 @@ impl Source for Environment {
                         let alt_key = if suffix.is_empty() {
                             prefix
                         } else {
-                            format!("{}.{}", prefix, suffix)
+                            format!("{prefix}.{suffix}")
                         };
                         
                         // Only insert if it doesn't already exist (don't override explicit keys)
